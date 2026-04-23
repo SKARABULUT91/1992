@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+twikit
+playwright
+playwright-stealth
+pydantic
+pyotp
+aiohttp
+fake-useragent
+supabase
+aiogram
