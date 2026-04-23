@@ -68,9 +68,6 @@ export default function App() {
     { id: 'overview', label: 'Genel Bakış', icon: LayoutDashboard },
     { id: 'actions', label: 'İşlemler', icon: Send },
     { id: 'boost', label: 'Impression Boost', icon: Zap },
-    { id: 'followers', label: 'Takipçi & İstatistik', icon: Users },
-    { id: 'bulkActions', label: 'Toplu İşlemler', icon: Twitter },
-    { id: 'proxy', label: 'Proxy Yönetimi', icon: RefreshCw },
     { id: 'logs', label: 'Loglar', icon: ClipboardList },
   ];
 
@@ -127,10 +124,10 @@ export default function App() {
                 <button
                   key={acc}
                   onClick={() => setSelectedAccount(acc)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all border border-transparent ${
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all ${
                     selectedAccount === acc 
-                      ? 'bg-orange-500/10 border-orange-500/30 text-orange-400' 
-                      : 'text-white/40 hover:bg-white/[0.05] hover:border-white/10 hover:text-white'
+                      ? 'bg-white/5 text-white' 
+                      : 'text-white/40 hover:text-white/70'
                   }`}
                 >
                   <div className="w-6 h-6 rounded-full bg-white/5 flex items-center justify-center border border-white/10">
@@ -307,9 +304,6 @@ export default function App() {
             {activeTab === 'actions' && <ActionsView selectedAccount={selectedAccount} />}
             {activeTab === 'boost' && <BoostView />}
             {activeTab === 'logs' && <LogsView logs={activities} />}
-            {activeTab === 'followers' && <div className="text-white/30 text-center py-20">Takipçi takip sayfası yakında...</div>}
-            {activeTab === 'bulkActions' && <div className="text-white/30 text-center py-20">Toplu işlemler sayfası yakında...</div>}
-            {activeTab === 'proxy' && <div className="text-white/30 text-center py-20">Proxy yönetimi sayfası yakında...</div>}
           </AnimatePresence>
         </div>
       </main>
