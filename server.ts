@@ -8,24 +8,20 @@ import { createProxyMiddleware } from "http-proxy-middleware";
 async function startServer() {
   const app = express();
   const PORT = 3000;
-  const PYTHON_PORT = 8001;
+  // Use a different port range if 8001 is common in the environment
+  const PYTHON_PORT = 9005; 
 
   console.log("🚀 Starting X-KODCUM Orchestrator...");
 
   // 1. Setup Python Backend
   const startPython = () => {
     console.log(`🐍 Starting Python process on port ${PYTHON_PORT}...`);
-    const pythonProcess = spawn("python3", ["main.py"], {
+    const pythonProcess = spawn("python", ["main.py"], {
       env: { ...process.env, PYTHON_PORT: PYTHON_PORT.toString() },
     });
 
-    pythonProcess.stdout.on("data", (data) => {
-      console.log(`[Python] ${data.toString().trim()}`);
-    });
-
-    pythonProcess.stderr.on("data", (data) => {
-      console.error(`[Python-Error] ${data.toString().trim()}`);
-    });
+    pythonProcess.stdout.on("data", (data) => console.log(`[Python] ${data.toString().trim()}`));
+    pythonProcess.stderr.on("data", (data) => console.error(`[Python-Error] ${data.toString().trim()}`));
 
     pythonProcess.on("close", (code) => {
       console.log(`[Python] Process exited with code ${code}. Restarting...`);
@@ -35,18 +31,7 @@ async function startServer() {
     return pythonProcess;
   };
 
-  // Check if we need to install python deps (only in cloud env if possible)
-  if (fs.existsSync("requirements.txt")) {
-     console.log("📦 Installing Python dependencies...");
-     const pip = spawn("pip3", ["install", "-r", "requirements.txt"]);
-     pip.stdout.on("data", (data) => console.log(`[pip] ${data}`));
-     pip.on("close", () => {
-       console.log("✅ Python dependencies installed.");
-       startPython();
-     });
-  } else {
-    startPython();
-  }
+  startPython();
 
   // 2. Proxy API requests to Python
   app.use(

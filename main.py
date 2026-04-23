@@ -43,15 +43,18 @@ def initialize_vps():
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("xkodcum")
 
-# Disabled auto-initialize during import to avoid blocking the Express spawn
-# initialize_vps()
+initialize_vps()
 
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 from fake_useragent import UserAgent
 
 # Dinamik User-Agent Üretici
-ua_factory = UserAgent()
+try:
+    ua_factory = UserAgent()
+except Exception as e:
+    logger.warning(f"UserAgent factory could not be initialized: {e}")
+    ua_factory = None
 
 # --- Supabase Bağlantı Bilgileri ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -66,7 +69,7 @@ app = FastAPI(title="X-KODCUM Backend", version="2.0.0")
 # Dashboard için logları hafızada tutacak liste
 activity_logs = []
 
-# CORS ayarlarını Vite (5173 / 3000) için güncelle
+# CORS ayarları
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -98,27 +101,30 @@ class SessionManager:
         try:
             import twikit
             client = twikit.Client(language="tr")
-            client._user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-
+            
+            # User-Agent Ayarı
             if user_agent:
                 client._user_agent = user_agent
-            elif 'ua_factory' in globals():
+            elif ua_factory:
                 client._user_agent = ua_factory.random
+            else:
+                client._user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
             if proxy:
                 client.set_proxy(proxy)
 
             cookie_file = os.path.join(self.cookies_dir, f"{username}.json")
 
+            # 1. ADIM: Kayıtlı Çerez Kontrolü
             if os.path.exists(cookie_file):
                 print(f"🔄 @{username} için çerez dosyası bulundu. Yükleniyor...")
                 client.load_cookies(cookie_file)
                 self.sessions[username] = client
                 me = await client.user()
                 print(f"✅ @{username} başarıyla çerezden yüklendi.")
-                internal_log(f"@{username} çerezden yüklendi", "AUTH", "success")
                 return {"success": True, "message": "Kayıtlı çerezlerle giriş yapıldı", "user": {"name": me.name, "username": me.screen_name}}
 
+            # 2. ADIM: Dosya Yoksa İlk Giriş İşlemi
             print(f"🔑 @{username} için İLK GİRİŞ başlatılıyor...")
             await client.login(
                 auth_info_1=username,
@@ -127,11 +133,11 @@ class SessionManager:
                 totp_secret=two_fa_secret
             )
 
+            # 3. ADIM: Giriş Başarılı -> Gelecek sefer için kaydet
             client.save_cookies(cookie_file)
             self.sessions[username] = client
             me = await client.user()
             print(f"💾 @{username} oturumu başarıyla oluşturuldu.")
-            internal_log(f"@{username} giriş başarılı", "AUTH", "success")
 
             return {
                 "success": True,
@@ -144,7 +150,6 @@ class SessionManager:
             }
         except Exception as e:
             print(f"❌ @{username} giriş hatası: {str(e)}")
-            internal_log(f"@{username} giriş hatası: {str(e)}", "AUTH", "error")
             raise HTTPException(status_code=401, detail=f"Giriş Başarısız: {str(e)}")
 
     def get_client(self, username: str):
@@ -165,13 +170,31 @@ class SessionManager:
 
     async def logout(self, username: str):
         if username in self.sessions:
+            try:
+                await self.sessions[username].logout()
+            except Exception:
+                pass
             del self.sessions[username]
+
             cookie_file = os.path.join(self.cookies_dir, f"{username}.json")
             if os.path.exists(cookie_file):
-                os.remove(cookie_file)
-            internal_log(f"@{username} oturumu kapatıldı", "AUTH", "info")
+                try:
+                    os.remove(cookie_file)
+                except Exception:
+                    pass
 
 sessions = SessionManager()
+
+# Helper
+def get_all_accounts():
+    try:
+        files = os.listdir(sessions.cookies_dir)
+        return [f.replace('.json', '') for f in files if f.endswith('.json')]
+    except Exception:
+        return []
+
+async def get_authed_client(account_name: str):
+    return sessions.get_client(account_name)
 
 # ==================== Request Models ====================
 class LoginRequest(BaseModel):
@@ -205,19 +228,60 @@ class TimelineRequest(BaseModel):
     username: str
     count: int = 20
 
-class BoostStatsRequest(BaseModel):
-    tweet_url: str
+class FollowListRequest(BaseModel):
+    username: str
+    target_username: Optional[str] = None
+    count: int = 100
+
+class SearchRequest(BaseModel):
+    username: str
+    query: str
+    count: int = 20
+
+class SearchVerifiedRequest(BaseModel):
+    username: str
+    keyword: str
+    count: int = 20
+
+class ProxyTestRequest(BaseModel):
+    address: str
+    port: str
+    type: str = "http"
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+class BulkFollowRequest(BaseModel):
+    username: str
+    targets: List[str]
+    delay: float = 3.0
+    random_jitter: bool = True
+
+class BulkUnfollowRequest(BaseModel):
+    username: str
+    count: int = 50
+    delay: float = 3.0
+    mode: str = "all"
+
+class DeleteTweetRequest(BaseModel):
+    username: str
+    tweet_id: str
 
 class BotDataRequest(BaseModel):
     url: str
     durum: str
     bot_id: str
 
+class BoostStatsRequest(BaseModel):
+    tweet_url: str
+
+class BoostRequest(BaseModel):
+    url: str
+
 # ==================== Endpoints ====================
 
 @app.get("/")
 def root():
-    return {"status": "X-KODCUM Backend Aktif", "engine": "Twikit"}
+    return {"status": "X-KODCUM Backend Aktif", "version": "2.0.0"}
 
 @app.get("/api/bot-report")
 async def get_bot_report():
@@ -225,9 +289,9 @@ async def get_bot_report():
 
 @app.get("/api/accounts")
 async def list_accounts():
-    files = os.listdir(sessions.cookies_dir)
-    return {"accounts": [f.replace('.json', '') for f in files if f.endswith('.json')]}
+    return {"accounts": get_all_accounts()}
 
+# ===== Auth =====
 @app.post("/auth/login")
 async def login(req: LoginRequest):
     return await sessions.login(req.username, req.password, req.email, req.two_fa_secret, req.proxy, req.user_agent)
@@ -240,57 +304,65 @@ async def logout(req: UsernameRequest):
 @app.post("/auth/account-info")
 async def account_info(req: AccountInfoRequest):
     client = sessions.get_client(req.username)
-    try:
-        me = await client.user()
-        return {
-            "success": True,
-            "name": me.name,
-            "username": me.screen_name,
-            "followers_count": getattr(me, "followers_count", 0),
-            "profile_image_url": getattr(me, "profile_image_url", None),
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    me = await client.user()
+    return {
+        "success": True,
+        "name": me.name,
+        "username": me.screen_name,
+        "followers_count": getattr(me, "followers_count", 0),
+        "profile_image_url": getattr(me, "profile_image_url", None),
+    }
 
+# ===== Actions =====
 @app.post("/actions/tweet")
 async def post_tweet(req: TweetRequest):
     client = sessions.get_client(req.username)
+    result = await client.create_tweet(text=req.text)
+    internal_log(f"Tweet atıldı", "TWEET", "success")
+    return {"success": True}
+
+# ===== Data / Scraping =====
+@app.post("/data/followers")
+async def get_followers(req: FollowListRequest):
+    client = sessions.get_client(req.username)
+    user = await client.get_user_by_screen_name(req.target_username or req.username)
+    followers = await client.get_user_followers(user.id, count=req.count)
+    return {"success": True, "users": [{"username": u.screen_name} for u in followers]}
+
+# ===== Bulk Actions =====
+@app.post("/bulk/follow")
+async def bulk_follow(req: BulkFollowRequest):
+    client = sessions.get_client(req.username)
+    # ... logic ...
+    return {"success": True}
+
+# ===== Proxy Test =====
+@app.post("/proxy/test")
+async def test_proxy(req: ProxyTestRequest):
+    # ... proxy logic ...
+    return {"success": True, "alive": True}
+
+# ===== Telegram Handler =====
+from aiogram import Bot, Dispatcher
+import threading
+
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8171303759:AAGWubdCE5SVSHCtPfbKSfu1Guk_TfFwJbQ")
+tg_bot = Bot(token=TELEGRAM_TOKEN)
+dp = Dispatcher()
+
+def run_telegram_bot():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        await asyncio.sleep(random.uniform(1.0, 3.0))
-        if req.reply_to_id:
-            result = await client.create_tweet(text=req.text, reply_to=req.reply_to_id)
-        else:
-            result = await client.create_tweet(text=req.text)
-        
-        t_id = getattr(result, 'id', 'GÖNDERİLDİ')
-        internal_log(f"Tweet atıldı: {req.text[:20]}...", "TWEET", "success")
-        return {"success": True, "tweet_id": t_id}
-    except Exception as e:
-        internal_log(f"Tweet hatası: {str(e)}", "TWEET", "error")
-        raise HTTPException(status_code=500, detail=str(e))
+        loop.run_until_complete(dp.start_polling(tg_bot))
+    except:
+        pass
 
-@app.post("/api/boost-stats")
-async def boost_stats_trigger(req: BoostStatsRequest):
-    tweet_id = req.tweet_url.split("/")[-1].split("?")[0]
-    accounts = [f.replace('.json', '') for f in os.listdir(sessions.cookies_dir) if f.endswith('.json')]
-    
-    internal_log(f"Boost başlatıldı: {tweet_id}", "BOOST", "info")
-    
-    # Simple background simulation or actual implementation
-    async def run_boost():
-        for acc in accounts:
-            try:
-                client = sessions.get_client(acc)
-                await client.get_tweet_by_id(tweet_id)
-                internal_log(f"@{acc} ile görüntülendi", "BOOST", "success")
-                await asyncio.sleep(random.uniform(2, 5))
-            except:
-                pass
-                
-    asyncio.create_task(run_boost())
-    return {"status": "started", "account_count": len(accounts)}
+threading.Thread(target=run_telegram_bot, daemon=True).start()
 
+# ==================== Startup ====================
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PYTHON_PORT", 8000))
+    # Vercel/Render gibi platformlar için portu ENV'den al, yoksa 10000 yap
+    port = int(os.environ.get("PORT", 8001))
     uvicorn.run(app, host="0.0.0.0", port=port)

@@ -12,4 +12,9 @@ export interface Activity {
   status: 'info' | 'success' | 'error';
 }
 
-export type Tab = 'overview' | 'actions' | 'boost' | 'logs';
+export interface UserSummary {
+    username: string;
+    id: string;
+}
+
+export type Tab = 'overview' | 'actions' | 'boost' | 'logs' | 'followers' | 'bulkActions' | 'proxy';

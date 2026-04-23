@@ -68,6 +68,9 @@ export default function App() {
     { id: 'overview', label: 'Genel Bakış', icon: LayoutDashboard },
     { id: 'actions', label: 'İşlemler', icon: Send },
     { id: 'boost', label: 'Impression Boost', icon: Zap },
+    { id: 'followers', label: 'Takipçi & İstatistik', icon: Users },
+    { id: 'bulkActions', label: 'Toplu İşlemler', icon: Twitter },
+    { id: 'proxy', label: 'Proxy Yönetimi', icon: RefreshCw },
     { id: 'logs', label: 'Loglar', icon: ClipboardList },
   ];
 
@@ -304,6 +307,9 @@ export default function App() {
             {activeTab === 'actions' && <ActionsView selectedAccount={selectedAccount} />}
             {activeTab === 'boost' && <BoostView />}
             {activeTab === 'logs' && <LogsView logs={activities} />}
+            {activeTab === 'followers' && <div className="text-white/30 text-center py-20">Takipçi takip sayfası yakında...</div>}
+            {activeTab === 'bulkActions' && <div className="text-white/30 text-center py-20">Toplu işlemler sayfası yakında...</div>}
+            {activeTab === 'proxy' && <div className="text-white/30 text-center py-20">Proxy yönetimi sayfası yakında...</div>}
           </AnimatePresence>
         </div>
       </main>
